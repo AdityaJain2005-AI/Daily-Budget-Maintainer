@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Daily Budget Breach Detector</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f5f7fb;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.app {
+    width: 460px;
+    max-width: 95%;
+    background: #ffffff;
+    padding: 24px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+
+h2 {
+    margin: 0 0 4px 0;
+    font-size: 20px;
+}
+
+.subtitle {
+    font-size: 13px;
+    opacity: 0.6;
+    margin-bottom: 16px;
+}
+.card {
+    padding: 16px;
+    border-radius: 12px;
+    background: #111827;
+    color: #ffffff;
+    margin-bottom: 14px;
+}
+
+.amount {
+    font-size: 30px;
+    font-weight: 600;
+}
+
+.budget-edit {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.budget-edit input {
+    flex: 1;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+}
+
+.budget-edit button {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: none;
+    background: #22c55e;
+    color: #ffffff;
+    cursor: pointer;
+}
+.status {
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: 500;
+    margin-bottom: 14px;
+}
+
+.safe { background: #ecfdf5; color: #065f46; }
+.warning { background: #fffbeb; color: #92400e; }
+.danger { background: #fef2f2; color: #991b1b; }
+.info {
+    font-size: 13px;
+    opacity: 0.75;
+    margin-bottom: 6px;
+}
+.form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.form input, .form select {
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+}
+
+.form input:focus, .form select:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+.add-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    background: #6366f1;
+    color: #ffffff;
+    font-weight: 500;
+    cursor: pointer;
+    margin: 14px 0;
+}
+.list {
+    margin-top: 6px;
+}
+
+.item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+.delete {
+    cursor: pointer;
+    color: #ef4444;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+    <h2>Daily Budget Monitor</h2>
+    <div class="subtitle">Predictive spending & breach detection</div>
+
+    <div class="card">
+        <small>Daily Budget</small>
+        <div class="amount">₹<span id="budget">0</span></div>
+
+        <div class="budget-edit">
+            <input id="budgetInput" type="number" placeholder="Set new budget">
+            <button onclick="updateBudget()">Save</button>
+        </div>
+    </div>
+
+    <div id="status" class="status safe">SAFE – spending under control</div>
+
+    <div class="info">Spent today: ₹<strong id="spent">0</strong></div>
+    <div class="info">Usage: <strong id="percent">0%</strong></div>
+    <div class="info">Projected end-of-day spend: ₹<strong id="projected">0</strong></div>
+    <div class="info" id="breachInfo"></div>
+
+    <hr style="margin:16px 0; border:none; border-top:1px solid #eee">
+
+    <div class="form">
+        <input id="amount" type="number" placeholder="Amount">
+        <select id="category">
+            <option>Food</option>
+            <option>Travel</option>
+            <option>Bills</option>
+            <option>Shopping</option>
+            <option>Other</option>
+        </select>
+    </div>
+    <button class="add-btn" onclick="addExpense()">Add Expense</button>
+    <div class="list" id="list"></div>
+</div>
+<script>
+let ledger = JSON.parse(localStorage.getItem("ledger")) || [];
+
+let config = JSON.parse(localStorage.getItem("config")) || {
+    dailyBudget: 500,
+    warningThreshold: 0.8,
+    dangerThreshold: 1
+};
+function getTodaysExpenses() {
+    const today = new Date().toDateString();
+    return ledger.filter(e =>
+        new Date(e.timestamp).toDateString() === today
+    );
+}
+
+function predictEndOfDaySpend(todayExpenses) {
+    const now = new Date();
+    const hoursPassed = now.getHours() + now.getMinutes() / 60;
+    if (hoursPassed === 0) return 0;
+
+    const spent = todayExpenses.reduce((s, e) => s + e.amount, 0);
+    return Math.round((spent / hoursPassed) * 24);
+}
+
+function evaluateStatus(percent) {
+    if (percent >= config.dangerThreshold) return "DANGER";
+    if (percent >= config.warningThreshold) return "WARNING";
+    return "SAFE";
+}
+function recalculate() {
+    const todayExpenses = getTodaysExpenses();
+    const spent = todayExpenses.reduce((s, e) => s + e.amount, 0);
+    const percent = spent / config.dailyBudget;
+    const projected = predictEndOfDaySpend(todayExpenses);
+    const status = evaluateStatus(percent);
+
+    document.getElementById("budget").innerText = config.dailyBudget;
+    document.getElementById("spent").innerText = spent;
+    document.getElementById("percent").innerText = Math.round(percent * 100) + "%";
+    document.getElementById("projected").innerText = projected;
+
+    const statusBox = document.getElementById("status");
+    const breachInfo = document.getElementById("breachInfo");
+    statusBox.className = "status";
+
+    if (status === "SAFE") {
+        statusBox.classList.add("safe");
+        statusBox.innerText = "SAFE – spending under control";
+        breachInfo.innerText = "";
+    }
+
+    if (status === "WARNING") {
+        statusBox.classList.add("warning");
+        statusBox.innerText = "WARNING – nearing daily limit";
+        breachInfo.innerText = "At this pace, you may exceed your budget today.";
+    }
+
+    if (status === "DANGER") {
+        statusBox.classList.add("danger");
+        statusBox.innerText = "BREACHED – daily budget exceeded";
+        breachInfo.innerText = "You have crossed your daily budget.";
+    }
+
+    renderList(todayExpenses);
+    localStorage.setItem("ledger", JSON.stringify(ledger));
+    localStorage.setItem("config", JSON.stringify(config));
+}
+
+function renderList(items) {
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+
+    items.forEach(e => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+            <span>${e.category} – ₹${e.amount}</span>
+            <span class="delete" onclick="removeExpense(${e.timestamp})">✕</span>
+        `;
+        list.appendChild(div);
+    });
+}
+function addExpense() {
+    const amount = Number(document.getElementById("amount").value);
+    const category = document.getElementById("category").value;
+    if (!amount || amount <= 0) return;
+
+    ledger.push({
+        amount,
+        category,
+        timestamp: Date.now()
+    });
+
+    document.getElementById("amount").value = "";
+    recalculate();
+}
+
+function removeExpense(timestamp) {
+    ledger = ledger.filter(e => e.timestamp !== timestamp);
+    recalculate();
+}
+function updateBudget() {
+    const value = Number(document.getElementById("budgetInput").value);
+    if (!value || value <= 0) return;
+
+    config.dailyBudget = value;
+    document.getElementById("budgetInput").value = "";
+    recalculate();
+}
+recalculate();
+</script>
+</body>
+</html>
